@@ -1,0 +1,25 @@
+# LeNet
+LeNet/data
+LeNet/results
+LeNet/weights
+LeNet/__pycache__
+# AlexNet
+AlexNet/results
+AlexNet/weights
+AlexNet/__pycache__
+# VGG16
+VGG16/results
+VGG16/weights
+VGG16/__pycache__
+# GoogLeNet
+GoogLeNet/results
+GoogLeNet/weights
+GoogLeNet/__pycache__
+# 原始数据
+GoogLeNet/cats_and_dogs
+# data_spilit构建的数据集
+GoogLeNet/data
+
+
+.idea
+

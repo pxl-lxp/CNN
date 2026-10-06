@@ -8,28 +8,37 @@ import torch.nn as nn            # nn
 import torch.optim as optim      # 优化器
 from tqdm import tqdm            # 封装后显示进度条
 
-import torch.utils.data as data
-from  torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import FashionMNIST
-from model import LeNet #模型
+from torch.utils.data import DataLoader
+from torchvision import transforms, datasets
+from model import GoogLeNet #模型
+"""
+    改用猫狗二分类，可能情况：模型过深 -> 过拟合
+"""
+def get_dataloader(batch_size, num_workers, pin_memory):
+    # 转换
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4860, 0.4517, 0.4161], std=[0.2583, 0.2510, 0.2540])
+    ])
+    # 训练集+验证集
+    train_set = datasets.ImageFolder("./data/train", transform=transform)
+    val_set = datasets.ImageFolder("./data/val", transform=transform)
 
-
-def get_dataloader(dataset, batch_size, num_workers, pin_memory):
-    # 划分训练集和验证集
-    train_set, val_set = data.random_split(dataset, [int(len(dataset) * 0.8), int(len(dataset) * 0.2)])
-    # 创建加载器对象
+    # 封装成loader
+    # 关键问题：本次没有加 shuffle 导致验证 acc 始终保持 0.5
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
-
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle= False, num_workers=num_workers, pin_memory=pin_memory)
     return train_loader, val_loader
 
+# 训练+验证
 def train(model, train_loader, val_loader, epochs):
+    # ==================================================初始化参数==================================================
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("device: ", device)
     model = model.to(device)
     # 优化器
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     # 损失函数
     criterion = nn.CrossEntropyLoss()
     # 定义最优模型
@@ -42,7 +51,7 @@ def train(model, train_loader, val_loader, epochs):
     val_accs = []     # 验证准确率列表
     start_time = time.time()   #开始时间
 
-    #训练+验证
+    #=================================================训练+验证=====================================================
     for epoch in range(epochs):
         # 初始化参数
         # 训练样本数 验证样本数   训练损失     验证损失     训练正确数量     验证正确数量
@@ -52,31 +61,28 @@ def train(model, train_loader, val_loader, epochs):
         # 开启训练模式
         model.train()
         # 封装后可以打印进度条
-        with tqdm(train_loader,
-                  desc=f"Epoch {epoch + 1}/{epochs} [训练]",
-                  ncols=120,
-                  leave=False) as train_pdar:
-            for data, target in train_pdar:
+        with tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs} [训练]", ncols=120, leave=False) as train_pdar:
+            for input_img, target in train_pdar:
                 # 设置到设备
-                data, target = data.to(device), target.to(device)
+                input_img, target = input_img.to(device), target.to(device)
                 # 向前传播
-                output = model(data)
+                output = model(input_img)
                 # 计算损失
                 loss = criterion(output, target)
                 # 清零累计梯度
                 optimizer.zero_grad()
                 # 反向传播
                 loss.backward()
-                # 优化学习率和梯度
+                # 更新参数
                 optimizer.step()
                 # 本批损失总和
-                train_loss += loss.item() * data.size(0) # 第一维 batch_size, shape = torch.Size([32, 1, 28, 28])
-                # 预测类别
+                train_loss += loss.item() * input_img.size(0) # 第一维 batch_size, shape = [b, c, h, w]
+                # 预测类别, 代替softmax
                 pred = torch.argmax(output, dim=1)
                 # 正确数量
                 train_corrects += torch.sum(pred == target).item()
                 # 训练数量
-                train_num += data.size(0)
+                train_num += input_img.size(0)
 
                 # 实时更新进度条上的 loss acc
                 train_pdar.set_postfix({
@@ -88,26 +94,24 @@ def train(model, train_loader, val_loader, epochs):
         # 开启验证模式
         model.eval()
         with tqdm(val_loader,
-                  desc=f"Epoch {epoch + 1}/{epochs} [验证]",
-                  ncols=120,
-                  leave=False) as val_pdar:
+                  desc=f"Epoch {epoch + 1}/{epochs} [验证]", ncols=120, leave=False) as val_pdar:
             with torch.no_grad():
-                for data, target in val_pdar:
+                for input_img, target in val_pdar:
                     # 设置到设备
-                    data, target = data.to(device), target.to(device)
+                    input_img, target = input_img.to(device), target.to(device)
 
                     # 向前传播
-                    output = model(data)
+                    output = model(input_img)
                     # 计算损失
                     loss = criterion(output, target)
                     # 验证总损失
-                    val_loss += loss.item() * data.size(0)  # 第一维 batch_size, shape = torch.Size([32, 1, 224, 224])
+                    val_loss += loss.item() * input_img.size(0)  # 第一维 batch_size, shape = torch.Size([32, 1, 224, 224])
                     # 预测类别
                     pred = torch.argmax(output, dim=1)
                     # 验证正确数量
                     val_corrects += torch.sum(pred == target).item()
                     # 验证数量
-                    val_num += data.size(0)
+                    val_num += input_img.size(0)
                     # 实时更新进度条上的 loss acc
                     val_pdar.set_postfix({
                         "loss": f"{val_loss / val_num:.4f}",
@@ -121,18 +125,19 @@ def train(model, train_loader, val_loader, epochs):
         train_accs.append(train_corrects / float(train_num))
         val_accs.append(val_corrects / float(val_num))
         tqdm.write(f"Epoch {epoch + 1}/{epochs} 完成 | 训练loss{train_loss / float(train_num):.4f} | 训练acc{train_corrects / float(train_num):.4f} | 验证loss{val_loss / float(val_num):.4f} | 验证acc{val_corrects / float(val_num):.4f}")
-
+        # -1 表示去最新数据
         if val_accs[-1] > best_acc:
             best_acc = val_accs[-1]
             best_model_wts = copy.deepcopy(model.state_dict())
-    # 保存模型
-    torch.save(best_model_wts, f"./weights/LeNet.pth")
-    #打印耗时和acc
+
+    # =================================================保存模型=====================================================
+    torch.save(best_model_wts, f"weights/GoogLeNet.pth")
+    #打印总耗时和最佳acc
     time_used = time.time() - start_time
     print(f"训练和验证耗时{time_used // 60:.0f}m{time_used % 60:.0f}s")
     print(f"最佳准确率: {best_acc * 100:.2f}%")
 
-    # 保存训练数据
+    # 保存训练数据到 pd 的 DataFrame
     train_process = pd.DataFrame(data={
         "Epoch": range(1, epochs + 1),
         "train_losses": train_losses,
@@ -142,7 +147,7 @@ def train(model, train_loader, val_loader, epochs):
     })
     train_process.to_csv("./results/train.csv", index=False)
     return train_process
-
+# 绘图
 def matplot_process(train_process):
     plt.figure(figsize=(12, 4))
     plt.subplot(121)
@@ -158,23 +163,15 @@ def matplot_process(train_process):
     plt.xlabel("epoch")
     plt.ylabel("accuracy")
     plt.show()
-
+# 主入口
 if __name__ == '__main__':
-    # 数据集
-    dataset = FashionMNIST(root='./data',
-                              train=True,
-                              transform=transforms.ToTensor(),
-                              download=True
-                              )
-    # print(len(dataset))
-    # 数据加载器
-    train_loader, val_loader = get_dataloader(  dataset, 32, num_workers=4, pin_memory=True)
 
-    # for step, (x, y) in enumerate(train_loader):
-    #     if step>0:
-    #         break
-    #     print(x.shape)
+    # 数据加载器           shape = [b, c, h, w]
+    train_loader, val_loader = get_dataloader(32, num_workers=4, pin_memory=True)
 
-    model = LeNet()
-    train_process = train(model, train_loader, val_loader, 30)
+    # 创建模型示例
+    model = GoogLeNet(num_classes=2) # cats and dogs
+    # 训练
+    train_process = train(model, train_loader, val_loader, 20)
+    # 绘图
     matplot_process(train_process)

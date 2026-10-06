@@ -12,7 +12,7 @@ import torch.utils.data as data
 from  torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import FashionMNIST
-from model import LeNet #模型
+from model import VGG16 #模型
 
 
 def get_dataloader(dataset, batch_size, num_workers, pin_memory):
@@ -29,7 +29,7 @@ def train(model, train_loader, val_loader, epochs):
     print("device: ", device)
     model = model.to(device)
     # 优化器
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     # 损失函数
     criterion = nn.CrossEntropyLoss()
     # 定义最优模型
@@ -56,11 +56,11 @@ def train(model, train_loader, val_loader, epochs):
                   desc=f"Epoch {epoch + 1}/{epochs} [训练]",
                   ncols=120,
                   leave=False) as train_pdar:
-            for data, target in train_pdar:
+            for input, target in train_pdar:
                 # 设置到设备
-                data, target = data.to(device), target.to(device)
+                input, target = input.to(device), target.to(device)
                 # 向前传播
-                output = model(data)
+                output = model(input)
                 # 计算损失
                 loss = criterion(output, target)
                 # 清零累计梯度
@@ -70,13 +70,13 @@ def train(model, train_loader, val_loader, epochs):
                 # 优化学习率和梯度
                 optimizer.step()
                 # 本批损失总和
-                train_loss += loss.item() * data.size(0) # 第一维 batch_size, shape = torch.Size([32, 1, 28, 28])
+                train_loss += loss.item() * input.size(0) # 第一维 batch_size, shape = torch.Size([32, 1, 28, 28])
                 # 预测类别
                 pred = torch.argmax(output, dim=1)
                 # 正确数量
                 train_corrects += torch.sum(pred == target).item()
                 # 训练数量
-                train_num += data.size(0)
+                train_num += input.size(0)
 
                 # 实时更新进度条上的 loss acc
                 train_pdar.set_postfix({
@@ -92,22 +92,22 @@ def train(model, train_loader, val_loader, epochs):
                   ncols=120,
                   leave=False) as val_pdar:
             with torch.no_grad():
-                for data, target in val_pdar:
+                for input, target in val_pdar:
                     # 设置到设备
-                    data, target = data.to(device), target.to(device)
+                    input, target = input.to(device), target.to(device)
 
                     # 向前传播
-                    output = model(data)
+                    output = model(input)
                     # 计算损失
                     loss = criterion(output, target)
                     # 验证总损失
-                    val_loss += loss.item() * data.size(0)  # 第一维 batch_size, shape = torch.Size([32, 1, 224, 224])
+                    val_loss += loss.item() * input.size(0)  # 第一维 batch_size, shape = torch.Size([32, 1, 224, 224])
                     # 预测类别
                     pred = torch.argmax(output, dim=1)
                     # 验证正确数量
                     val_corrects += torch.sum(pred == target).item()
                     # 验证数量
-                    val_num += data.size(0)
+                    val_num += input.size(0)
                     # 实时更新进度条上的 loss acc
                     val_pdar.set_postfix({
                         "loss": f"{val_loss / val_num:.4f}",
@@ -126,7 +126,7 @@ def train(model, train_loader, val_loader, epochs):
             best_acc = val_accs[-1]
             best_model_wts = copy.deepcopy(model.state_dict())
     # 保存模型
-    torch.save(best_model_wts, f"./weights/LeNet.pth")
+    torch.save(best_model_wts, f"weights/VGG16.pth")
     #打印耗时和acc
     time_used = time.time() - start_time
     print(f"训练和验证耗时{time_used // 60:.0f}m{time_used % 60:.0f}s")
@@ -160,10 +160,10 @@ def matplot_process(train_process):
     plt.show()
 
 if __name__ == '__main__':
-    # 数据集
-    dataset = FashionMNIST(root='./data',
+    # 数据集 借用LeNet数据集
+    dataset = FashionMNIST(root='../LeNet/data',
                               train=True,
-                              transform=transforms.ToTensor(),
+                              transform=transforms.Compose([transforms.Resize(224),transforms.ToTensor()]),
                               download=True
                               )
     # print(len(dataset))
@@ -175,6 +175,6 @@ if __name__ == '__main__':
     #         break
     #     print(x.shape)
 
-    model = LeNet()
-    train_process = train(model, train_loader, val_loader, 30)
+    model = VGG16(in_channels=1)
+    train_process = train(model, train_loader, val_loader, 5)
     matplot_process(train_process)
