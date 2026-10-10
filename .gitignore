@@ -19,7 +19,12 @@ GoogLeNet/__pycache__
 GoogLeNet/cats_and_dogs
 # data_spilit构建的数据集
 GoogLeNet/data
+# ResNet
+ResNet/results
+ResNet/weights
+ResNet/__pycache__
 
+ResNet/data
 
 .idea
 

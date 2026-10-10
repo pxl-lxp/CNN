@@ -25,5 +25,41 @@ nn 和 F 的本质区别：有没有“状态”
 **验证** 数据加载器 时需要`shuffle=False`
 
 否则出现验证集 ***acc*** 始终保持 **0.5**,(二分类)
+# ResNet
+
+核心是 BasicBlock：两层 3×3 卷积 + 残差连接。
+
+通道或尺寸变化时用 downsample（1×1 卷积 + BN）对齐。
+
+分类头必须用 AdaptiveAvgPool2d((1,1))，不能用 AvgPool2d。
+
+resnet18(num_classes=37) 修改类别数。
+
+# 训练技巧
+数据增强（仅训练集）：RandomResizedCrop、RandomHorizontalFlip、ColorJitter。
+
+验证集只做 Resize + Normalize。
+
+优化器：Adam(lr=1e-4, weight_decay=1e-4) 或 SGD(lr=0.01, momentum=0.9)。
+
+学习率调度：CosineAnnealingLR。
+
+过拟合缓解：增强、weight_decay、Dropout、早停。
 
   
+# git
+### 先修改 ***.gitignore***
+
+`git status`
+
+`git add .`
+
+`git commit -m "添加什么"`
+
+`git push -u origin main`
+
+推送不了的话，设置成自己端口
+
+`git config --global http.proxy http://127.0.0.1:7890`
+
+`git config --global https.proxy http://127.0.0.1:7890`
