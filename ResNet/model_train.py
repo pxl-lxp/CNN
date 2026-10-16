@@ -1,0 +1,194 @@
+import copy
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
+
+import torch                     # torch库
+import torch.nn as nn            # nn
+import torch.optim as optim      # 优化器
+from tqdm import tqdm            # 封装后显示进度条
+
+from torch.utils.data import DataLoader
+from torchvision import transforms, datasets
+from model import resnet18 #模型
+"""
+    改用37分类，可能情况：模型过深 -> 过拟合
+"""
+def get_dataloader(batch_size, num_workers, pin_memory):
+    # 训练集：加数据增强
+    train_transform = transforms.Compose([
+        # 随机裁剪 + 缩放            随机区域占原图面积的 70% 到 100%
+        transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
+        # 随机水平翻转               有 50% 概率把图片左右镜像
+        transforms.RandomHorizontalFlip(),
+        # 随机颜色扰动          brightness=0.2：亮度随机变化 ±20%；
+        #                     contrast=0.2：对比度随机变化 ±20%；
+        #                     saturation=0.2：饱和度随机变化 ±20%。
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4830, 0.4509, 0.3972],
+                             std=[0.2649, 0.2601, 0.2686],)
+    ])
+    # 验证集：只 Resize + 归一化
+    val_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4830, 0.4509, 0.3972],
+                             std=[0.2649, 0.2601, 0.2686],)
+    ])
+
+    # 训练集+验证集
+    train_set = datasets.ImageFolder("./data/train", transform=train_transform)
+    val_set = datasets.ImageFolder("./data/val", transform=val_transform)
+
+    # 封装成loader
+    # 关键问题：本次没有加 shuffle 导致验证 acc 始终保持 0.5
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle= False, num_workers=num_workers, pin_memory=pin_memory)
+    return train_loader, val_loader
+
+# 训练+验证
+def train(model, train_loader, val_loader, epochs):
+    # ==================================================初始化参数==================================================
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("device: ", device)
+    model = model.to(device)
+    # 优化器
+    # 模型深度增加 , 适当修改学习率
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    # 损失函数
+    criterion = nn.CrossEntropyLoss()
+    # 定义最优模型
+    best_model_wts = copy.deepcopy(model.state_dict())
+    # 初始化参数
+    best_acc = 0.0    # 准确率
+    train_losses = [] # 训练损失列表
+    val_losses = []   # 验证损失列表
+    train_accs = []   # 训练准确率列表
+    val_accs = []     # 验证准确率列表
+    start_time = time.time()   #开始时间
+
+    #=================================================训练+验证=====================================================
+    for epoch in range(epochs):
+        # 初始化参数
+        # 训练样本数 验证样本数   训练损失     验证损失     训练正确数量     验证正确数量
+        train_num, val_num, train_loss, val_loss, train_corrects, val_corrects = 0, 0, 0.0, 0.0, 0, 0
+
+        # ================================分批训练========================================
+        # 开启训练模式
+        model.train()
+        # 封装后可以打印进度条
+        with tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs} [训练]", ncols=120, leave=False) as train_pdar:
+            for input_img, target in train_pdar:
+                # 设置到设备
+                input_img, target = input_img.to(device), target.to(device)
+                # 向前传播
+                output = model(input_img)
+                # 计算损失
+                loss = criterion(output, target)
+                # 清零累计梯度
+                optimizer.zero_grad()
+                # 反向传播
+                loss.backward()
+                # 更新参数
+                optimizer.step()
+                # 本批损失总和
+                train_loss += loss.item() * input_img.size(0) # 第一维 batch_size, shape = [b, c, h, w]
+                # 预测类别, 代替softmax
+                pred = torch.argmax(output, dim=1)
+                # 正确数量
+                train_corrects += torch.sum(pred == target).item()
+                # 训练数量
+                train_num += input_img.size(0)
+
+                # 实时更新进度条上的 loss acc
+                train_pdar.set_postfix({
+                    "loss": f"{train_loss / train_num:.4f}",
+                    "acc": f"{train_corrects / train_num:.4f}"
+                })
+
+        # ================================分批验证========================================
+        # 开启验证模式
+        model.eval()
+        with tqdm(val_loader,
+                  desc=f"Epoch {epoch + 1}/{epochs} [验证]", ncols=120, leave=False) as val_pdar:
+            with torch.no_grad():
+                for input_img, target in val_pdar:
+                    # 设置到设备
+                    input_img, target = input_img.to(device), target.to(device)
+
+                    # 向前传播
+                    output = model(input_img)
+                    # 计算损失
+                    loss = criterion(output, target)
+                    # 验证总损失
+                    val_loss += loss.item() * input_img.size(0)  # 第一维 batch_size, shape = torch.Size([32, 1, 224, 224])
+                    # 预测类别
+                    pred = torch.argmax(output, dim=1)
+                    # 验证正确数量
+                    val_corrects += torch.sum(pred == target).item()
+                    # 验证数量
+                    val_num += input_img.size(0)
+                    # 实时更新进度条上的 loss acc
+                    val_pdar.set_postfix({
+                        "loss": f"{val_loss / val_num:.4f}",
+                        "acc": f"{val_corrects / val_num:.4f}"
+                    })
+
+        # ==============================统计本轮损失和精度======================================
+        # 加入列表
+        train_losses.append(train_loss / float(train_num))
+        val_losses.append(val_loss / float(val_num))
+        train_accs.append(train_corrects / float(train_num))
+        val_accs.append(val_corrects / float(val_num))
+        tqdm.write(f"Epoch {epoch + 1}/{epochs} 完成 | 训练loss{train_loss / float(train_num):.4f} | 训练acc{train_corrects / float(train_num):.4f} | 验证loss{val_loss / float(val_num):.4f} | 验证acc{val_corrects / float(val_num):.4f}")
+        # -1 表示去最新数据
+        if val_accs[-1] > best_acc:
+            best_acc = val_accs[-1]
+            best_model_wts = copy.deepcopy(model.state_dict())
+
+    # =================================================保存模型=====================================================
+    torch.save(best_model_wts, f"weights/ResNet18_37_class.pth")
+    #打印总耗时和最佳acc
+    time_used = time.time() - start_time
+    print(f"训练和验证耗时{time_used // 60:.0f}m{time_used % 60:.0f}s")
+    print(f"最佳准确率: {best_acc * 100:.2f}%")
+
+    # 保存训练数据到 pd 的 DataFrame
+    train_process = pd.DataFrame(data={
+        "Epoch": range(1, epochs + 1),
+        "train_losses": train_losses,
+        "train_accs": train_accs,
+        "val_losses": val_losses,
+        "val_accs": val_accs,
+    })
+    train_process.to_csv("./results/train_37_class.csv", index=False)
+    return train_process
+# 绘图
+def matplot_process(train_process):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(121)
+    plt.plot(train_process["Epoch"], train_process.train_losses, 'ro-', label="train loss")
+    plt.plot(train_process["Epoch"], train_process.val_losses, 'bs-', label="validation loss")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("loss")
+    plt.subplot(122)
+    plt.plot(train_process["Epoch"], train_process.train_accs, 'ro-', label="train accuracy")
+    plt.plot(train_process["Epoch"], train_process.val_accs, 'bs-', label="validation accuracy")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("accuracy")
+    plt.show()
+# 主入口
+if __name__ == '__main__':
+
+    # 数据加载器           shape = [b, c, h, w]
+    train_loader, val_loader = get_dataloader(32, num_workers=4, pin_memory=True)
+
+    # 创建模型示例
+    resnet18=  resnet18(37) # cats and dogs
+    # 训练, 适当增加轮数, 模型深且数据集小
+    train_process = train(resnet18, train_loader, val_loader, 30)
+    # 绘图
+    matplot_process(train_process)

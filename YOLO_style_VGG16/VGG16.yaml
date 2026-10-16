@@ -1,0 +1,52 @@
+# VGG16 模型配置
+# [from, number, module, args]
+# from: 输入来源层索引，-1 表示上一层
+# number: 重复次数
+# module: 模块名
+# args: 模块参数
+
+nc: 10           # 类别数
+width_multiple: 1.0 # 宽度倍率
+dropout: 0.5
+
+backbone:
+# [from, number, module, args]
+
+  # Block 1
+  [[-1, 1, Conv, [64,  3, 1, 1]],
+   [-1, 1, Conv, [64,  3, 1, 1]],
+   [-1, 1, MaxPool, [2, 2]],
+
+  # Block 2
+   [-1, 1, Conv, [128, 3, 1, 1]],
+   [-1, 1, Conv, [128, 3, 1, 1]],
+   [-1, 1, MaxPool, [2, 2]],
+
+  # Block 3
+   [-1, 1, Conv, [256, 3, 1, 1]],
+   [-1, 1, Conv, [256, 3, 1, 1]],
+   [-1, 1, Conv, [256, 3, 1, 1]],
+   [-1, 1, MaxPool, [2, 2]],
+
+  # Block 4
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, MaxPool, [2, 2]],
+
+  # Block 5
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, Conv, [512, 3, 1, 1]],
+   [-1, 1, MaxPool, [2, 2]]]
+
+head:
+  [[-1, 1, AdaptiveAvgPool, [1, 1]],
+   [-1, 1, Flatten, []],
+   [-1, 1, Linear, [4096]],
+   [-1, 1, ReLU, []],
+   [-1, 1, Dropout, [0.5]],
+   [-1, 1, Linear, [4096]],
+   [-1, 1, ReLU, []],
+   [-1, 1, Dropout, [0.5]],
+   [-1, 1, Linear, [nc]]]
