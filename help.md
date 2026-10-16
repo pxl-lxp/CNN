@@ -58,15 +58,19 @@ resnet18(num_classes=37) 修改类别数。
 
 `git push -u origin main`
 
+<<<<<<< HEAD
 取消提交
 
 `git reset HEAD^`
 
+=======
+>>>>>>> ee60bc5101d88601fd340c5a1d773196b6d4305c
 推送不了的话，设置成自己端口
 
 `git config --global http.proxy http://127.0.0.1:7890`
 
 `git config --global https.proxy http://127.0.0.1:7890`
+<<<<<<< HEAD
 
 # YOLO_style_VGG16
 学习yolo之前熟悉一下yolo风格的代码
@@ -74,3 +78,5 @@ resnet18(num_classes=37) 修改类别数。
 1.加载yaml文件读取配置
 
 2.parser.add_argument()方法
+=======
+>>>>>>> ee60bc5101d88601fd340c5a1d773196b6d4305c
